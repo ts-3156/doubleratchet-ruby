@@ -61,7 +61,6 @@ module Util
   end
 
   def ratchet_decrypt(state, header, ciphertext, ad)
-    header[:dh] = RbNaCl::PublicKey.new(header[:dh])
     plaintext = try_skipped_message_keys(state, header, ciphertext, ad)
     return plaintext if plaintext
 

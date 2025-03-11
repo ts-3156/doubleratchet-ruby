@@ -81,7 +81,7 @@ module Util
   def try_skipped_message_keys(state, header, ciphertext, ad)
     key = [header[:dh].to_bytes, header[:n]]
     if (mk = state[:mk_skipped][key])
-      state.delete(key)
+      state[:mk_skipped].delete(key)
       decrypt(mk, ciphertext, concat(ad, header))
     else
       nil

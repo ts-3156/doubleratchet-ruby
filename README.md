@@ -1,5 +1,7 @@
 A Ruby implementation of The Double Ratchet Algorithm.
 
+This application is written in very small Ruby code. If you want to implement The Double Ratchet Algorithm in your preferred programming language, it is better to look directly at the Ruby code.
+
 ## Usage
 
 ```ruby
@@ -50,4 +52,8 @@ puts alice.receive_message(*b4)
 a5 = alice.send_message('A5')
 puts bob.receive_message(*a5)
 ```
+
+## Documentation
+
+https://signal.org/docs/specifications/doubleratchet/
 

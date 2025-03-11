@@ -56,4 +56,3 @@ puts bob.receive_message(*a5)
 ## Documentation
 
 https://signal.org/docs/specifications/doubleratchet/
-

@@ -1,5 +1,27 @@
 require 'openssl'
+require 'base64'
+require 'json'
 require 'rbnacl'
+
+class MessageHeader
+  attr_reader :dh, :pn, :n
+
+  def initialize(dh, pn, n)
+    @dh = dh.instance_of?(String) ? RbNaCl::PublicKey.new(dh) : dh
+    @pn = pn
+    @n = n
+  end
+
+  def dump
+    JSON.dump(dh: Base64.strict_encode64(@dh.to_bytes), pn: @pn, n: @n)
+  end
+
+  def self.parse(str)
+    obj = JSON.parse(str, symbolize_names: true)
+    obj[:dh] = Base64.strict_decode64(obj[:dh])
+    new(*obj.values_at(:dh, :pn, :n))
+  end
+end
 
 module Util
   def generate_dh
@@ -46,11 +68,11 @@ module Util
   end
 
   def message_header(dh, pn, n)
-    {dh: dh, pn: pn, n: n}
+    MessageHeader.new(dh, pn, n)
   end
 
   def concat(ad, header)
-    ad + Marshal.dump({dh: header[:dh].to_bytes, pn: header[:pn], n: header[:n]})
+    ad + header.dump
   end
 
   def ratchet_encrypt(state, plaintext, ad)
@@ -64,21 +86,21 @@ module Util
     plaintext = try_skipped_message_keys(state, header, ciphertext, ad)
     return plaintext if plaintext
 
-    if header[:dh] != state[:dhr]
+    if header.dh != state[:dhr]
       # 以前の受信チェーンのスキップ済みメッセージキーを保存しておく
-      skip_message_keys(state, header[:pn])
+      skip_message_keys(state, header.pn)
       dh_ratchet(state, header)
     end
 
     # 新しい受信チェーンのスキップ済みメッセージキーを保存しておく
-    skip_message_keys(state, header[:n])
+    skip_message_keys(state, header.n)
     state[:ckr], mk = kdf_ck(state[:ckr])
     state[:nr] += 1
     decrypt(mk, ciphertext, concat(ad, header))
   end
 
   def try_skipped_message_keys(state, header, ciphertext, ad)
-    key = [header[:dh].to_bytes, header[:n]]
+    key = [header.dh.to_bytes, header.n]
     if (mk = state[:mk_skipped][key])
       state[:mk_skipped].delete(key)
       decrypt(mk, ciphertext, concat(ad, header))
@@ -105,7 +127,7 @@ module Util
     state[:pn] = state[:ns]
     state[:ns] = 0
     state[:nr] = 0
-    state[:dhr] = header[:dh]
+    state[:dhr] = header.dh
     state[:rk], state[:ckr] = kdf_rk(state[:rk], dh(state[:dhs], state[:dhr]))
     state[:dhs], state[:dhs_pub] = generate_dh
     state[:rk], state[:cks] = kdf_rk(state[:rk], dh(state[:dhs], state[:dhr]))

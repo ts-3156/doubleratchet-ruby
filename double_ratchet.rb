@@ -253,13 +253,13 @@ class Person
     @state = {}
   end
 
-  def x3dh_sender(sk, dhr, ad)
+  def init_x3dh_initiator(sk, dhr, ad)
     @sk = sk
     @dhr = dhr
     @ad = ad
   end
 
-  def x3dh_recipient(sk, dhs, dhs_pub, ad)
+  def init_x3dh_responder(sk, dhs, dhs_pub, ad)
     @sk = sk
     @dhs = dhs
     @dhs_pub = dhs_pub
@@ -337,11 +337,11 @@ if __FILE__ == $0
   HEADER_ENCRYPTION_FLAG = true
 
   alice = Person.new
-  alice.x3dh_sender(SK, SIGNED_PREKEY.public_key, AD)
+  alice.init_x3dh_initiator(SK, SIGNED_PREKEY.public_key, AD)
   alice.init_ratchet_sender(HEADER_ENCRYPTION_FLAG)
 
   bob = Person.new
-  bob.x3dh_recipient(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
+  bob.init_x3dh_responder(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
   bob.init_ratchet_recipient(HEADER_ENCRYPTION_FLAG)
 
   # Step 1

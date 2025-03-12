@@ -259,7 +259,7 @@ class Person
     @ad = ad
   end
 
-  def x3dh_receiver(sk, dhs, dhs_pub, ad)
+  def x3dh_recipient(sk, dhs, dhs_pub, ad)
     @sk = sk
     @dhs = dhs
     @dhs_pub = dhs_pub
@@ -288,7 +288,7 @@ class Person
     @sk = @dhr = nil
   end
 
-  def init_ratchet_receiver(header_encryption = false)
+  def init_ratchet_recipient(header_encryption = false)
     @header_encryption = header_encryption
 
     @state[:dhs] = @dhs
@@ -341,8 +341,8 @@ if __FILE__ == $0
   alice.init_ratchet_sender(HEADER_ENCRYPTION_FLAG)
 
   bob = Person.new
-  bob.x3dh_receiver(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
-  bob.init_ratchet_receiver(HEADER_ENCRYPTION_FLAG)
+  bob.x3dh_recipient(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
+  bob.init_ratchet_recipient(HEADER_ENCRYPTION_FLAG)
 
   # Step 1
   a1 = alice.send_message('A1')

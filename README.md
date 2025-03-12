@@ -18,13 +18,15 @@ AD = ['00' * 64].pack('H*')
 SK = ['00' * 32].pack('H*')
 SIGNED_PREKEY = RbNaCl::PrivateKey.generate
 
+HEADER_ENCRYPTION_FLAG = true
+
 alice = Person.new
 alice.x3dh_sender(SK, SIGNED_PREKEY.public_key, AD)
-alice.init_ratchet_sender
+alice.init_ratchet_sender(HEADER_ENCRYPTION_FLAG)
 
 bob = Person.new
 bob.x3dh_receiver(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
-bob.init_ratchet_receiver
+bob.init_ratchet_receiver(HEADER_ENCRYPTION_FLAG)
 
 # Step 1
 a1 = alice.send_message('A1')

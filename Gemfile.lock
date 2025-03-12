@@ -1,6 +1,7 @@
 GEM
   remote: https://rubygems.org/
   specs:
+    base64 (0.2.0)
     ffi (1.17.1)
     ffi (1.17.1-aarch64-linux-gnu)
     ffi (1.17.1-aarch64-linux-musl)
@@ -12,6 +13,8 @@ GEM
     ffi (1.17.1-x86_64-darwin)
     ffi (1.17.1-x86_64-linux-gnu)
     ffi (1.17.1-x86_64-linux-musl)
+    fiddle (1.1.2)
+    ostruct (0.6.0)
     rbnacl (7.1.2)
       ffi (~> 1)
 
@@ -29,6 +32,9 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
+  base64
+  fiddle
+  ostruct
   rbnacl
 
 BUNDLED WITH

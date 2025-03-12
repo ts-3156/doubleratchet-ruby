@@ -23,7 +23,7 @@ class MessageHeader
   end
 end
 
-module Util
+module DoubleRatchet
   def generate_dh
     key = RbNaCl::PrivateKey.generate
     [key, key.public_key]
@@ -38,7 +38,7 @@ module Util
   def kdf_rk(rk, dh_out)
     opt = {
         salt: rk,
-        info: 'MyApplication'.unpack1('H*'),
+        info: 'MyApplication kdf_rk'.unpack1('H*'),
         length: 64,
         hash: 'SHA256'
     }
@@ -72,7 +72,7 @@ module Util
   end
 
   def concat(ad, header)
-    ad + header.dump
+    ad + (header.instance_of?(String) ? header : header.dump)
   end
 
   def ratchet_encrypt(state, plaintext, ad)
@@ -134,8 +134,116 @@ module Util
   end
 end
 
+module DoubleRatchetWithHeaderEncryption
+  def kdf_rk_he(rk, dh_out)
+    opt = {
+        salt: rk,
+        info: 'MyApplication kdf_rk_he'.unpack1('H*'),
+        length: 96,
+        hash: 'SHA256'
+    }
+    out = OpenSSL::KDF.hkdf(dh_out, **opt)
+    [out[0..31], out[32..63], out[64..95]]
+  end
+
+  # 同じhkが繰り返し利用されるため、nonceに重複した値を使用してはいけない
+  def hencrypt(hk, plaintext)
+    cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(hk)
+    nonce = ['00' * cipher.nonce_bytes].pack('H*') # TODO
+    cipher.encrypt(nonce, plaintext, '') # TODO
+  end
+
+  def hdecrypt(hk, ciphertext)
+    return nil unless hk
+    cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(hk)
+    nonce = ['00' * cipher.nonce_bytes].pack('H*') # TODO
+    cipher.decrypt(nonce, ciphertext, '') # TODO
+  rescue RbNaCl::CryptoError => e
+    if e.message == 'Decryption failed. Ciphertext failed verification.'
+      nil
+    else
+      raise
+    end
+  end
+
+  def ratchet_encrypt_he(state, plaintext, ad)
+    state[:cks], mk = kdf_ck(state[:cks])
+    header = message_header(state[:dhs_pub], state[:pn], state[:ns])
+    enc_header = hencrypt(state[:hks], header.dump)
+    state[:ns] += 1
+    [enc_header, encrypt(mk, plaintext, concat(ad, enc_header))]
+  end
+
+  def ratchet_decrypt_he(state, enc_header, ciphertext, ad)
+    plaintext = try_skipped_message_keys_he(state, enc_header, ciphertext, ad)
+    return plaintext if plaintext
+
+    header, dh_ratchet = decrypt_header(state, enc_header)
+
+    if dh_ratchet
+      skip_message_keys_he(state, header.pn)
+      dh_ratchet_he(state, header)
+    end
+
+    skip_message_keys_he(state, header.n)
+    state[:ckr], mk = kdf_ck(state[:ckr])
+    state[:nr] += 1
+    decrypt(mk, ciphertext, concat(ad, enc_header))
+  end
+
+  def try_skipped_message_keys_he(state, enc_header, ciphertext, ad)
+    state[:mk_skipped].each do |(hk, n), mk|
+      header = decrypt_header(hk, enc_header)
+      if header && header.n == n
+        state[:mk_skipped].delete([hk, n])
+        return decrypt(mk, ciphertext, concat(ad, enc_header))
+      end
+    end
+
+    nil
+  end
+
+  def decrypt_header(state, enc_header)
+    if (plaintext = hdecrypt(state[:hkr], enc_header))
+      return [MessageHeader.parse(plaintext), false]
+    end
+    if (plaintext = hdecrypt(state[:nhkr], enc_header))
+      return [MessageHeader.parse(plaintext), true]
+    end
+
+    raise
+  end
+
+  MAX_SKIP_HE = 100
+
+  def skip_message_keys_he(state, num)
+    raise 'Too many skipped message keys' if state[:nr] + MAX_SKIP_HE < num
+
+    if state[:ckr]
+      while state[:nr] < num
+        state[:ckr], mk = kdf_ck(state[:ckr])
+        state[:mk_skipped][[state[:hkr], state[:nr]]] = mk
+        state[:nr] += 1
+      end
+    end
+  end
+
+  def dh_ratchet_he(state, header)
+    state[:pn] = state[:ns]
+    state[:ns] = 0
+    state[:nr] = 0
+    state[:hks] = state[:nhks]
+    state[:hkr] = state[:nhkr]
+    state[:dhr] = header.dh
+    state[:rk], state[:ckr], state[:nhkr] = kdf_rk_he(state[:rk], dh(state[:dhs], state[:dhr]))
+    state[:dhs], state[:dhs_pub] = generate_dh
+    state[:rk], state[:cks], state[:nhks] = kdf_rk_he(state[:rk], dh(state[:dhs], state[:dhr]))
+  end
+end
+
 class Person
-  include Util
+  include DoubleRatchet
+  include DoubleRatchetWithHeaderEncryption
 
   attr_reader :state
 
@@ -156,10 +264,19 @@ class Person
     @ad = ad
   end
 
-  def init_ratchet_sender
+  def init_ratchet_sender(header_encryption = false)
+    @header_encryption = header_encryption
+
     @state[:dhs], @state[:dhs_pub] = generate_dh
     @state[:dhr] = @dhr
-    @state[:rk], @state[:cks] = kdf_rk(@sk, dh(@state[:dhs], @state[:dhr]))
+    if header_encryption
+      @state[:rk], @state[:cks], @state[:nhks] = kdf_rk_he(@sk, dh(@state[:dhs], @state[:dhr]))
+      @state[:hks] = @sk
+      @state[:hkr] = nil
+      @state[:nhkr] = @sk
+    else
+      @state[:rk], @state[:cks] = kdf_rk(@sk, dh(@state[:dhs], @state[:dhr]))
+    end
     @state[:ckr] = nil
     @state[:ns] = 0
     @state[:nr] = 0
@@ -169,7 +286,9 @@ class Person
     @sk = @dhr = nil
   end
 
-  def init_ratchet_receiver
+  def init_ratchet_receiver(header_encryption = false)
+    @header_encryption = header_encryption
+
     @state[:dhs] = @dhs
     @state[:dhs_pub] = @dhs_pub
     @state[:dhr] = nil
@@ -180,16 +299,30 @@ class Person
     @state[:nr] = 0
     @state[:pn] = 0
     @state[:mk_skipped] = {}
+    if header_encryption
+      @state[:hks] = nil
+      @state[:nhks] = @sk
+      @state[:hkr] = nil
+      @state[:nhkr] = @sk
+    end
 
     @sk = @dhs = @dhs_pub = nil
   end
 
   def send_message(msg)
-    header, ciphertext = ratchet_encrypt(@state, msg, @ad)
+    if @header_encryption
+      ratchet_encrypt_he(@state, msg, @ad)
+    else
+      ratchet_encrypt(@state, msg, @ad)
+    end
   end
 
   def receive_message(header, ciphertext)
-    plaintext = ratchet_decrypt(@state, header, ciphertext, @ad)
+    if @header_encryption
+      ratchet_decrypt_he(@state, header, ciphertext, @ad)
+    else
+      ratchet_decrypt(@state, header, ciphertext, @ad)
+    end
   end
 end
 
@@ -199,13 +332,15 @@ if __FILE__ == $0
   SK = ['00' * 32].pack('H*')
   SIGNED_PREKEY = RbNaCl::PrivateKey.generate
 
+  HEADER_ENCRYPTION_FLAG = true
+
   alice = Person.new
   alice.x3dh_sender(SK, SIGNED_PREKEY.public_key, AD)
-  alice.init_ratchet_sender
+  alice.init_ratchet_sender(HEADER_ENCRYPTION_FLAG)
 
   bob = Person.new
   bob.x3dh_receiver(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
-  bob.init_ratchet_receiver
+  bob.init_ratchet_receiver(HEADER_ENCRYPTION_FLAG)
 
   # Step 1
   a1 = alice.send_message('A1')

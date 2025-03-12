@@ -1,5 +1,7 @@
 A Ruby implementation of The Double Ratchet Algorithm.
 
+This repository also includes the header encryption variant of the Double Ratchet.
+
 This application is written in very small Ruby code. If you want to implement The Double Ratchet Algorithm in your preferred programming language, it is better to look directly at the Ruby code.
 
 ## Usage

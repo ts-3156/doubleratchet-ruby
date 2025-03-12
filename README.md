@@ -25,8 +25,8 @@ alice.x3dh_sender(SK, SIGNED_PREKEY.public_key, AD)
 alice.init_ratchet_sender(HEADER_ENCRYPTION_FLAG)
 
 bob = Person.new
-bob.x3dh_receiver(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
-bob.init_ratchet_receiver(HEADER_ENCRYPTION_FLAG)
+bob.x3dh_recipient(SK, SIGNED_PREKEY, SIGNED_PREKEY.public_key, AD)
+bob.init_ratchet_recipient(HEADER_ENCRYPTION_FLAG)
 
 # Step 1
 a1 = alice.send_message('A1')

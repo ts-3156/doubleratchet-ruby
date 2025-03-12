@@ -29,8 +29,8 @@ module DoubleRatchet
     [key, key.public_key]
   end
 
-  # key1: X25519形式の秘密鍵
-  # key2: X25519形式の公開鍵
+  # key1: a private key in X25519 format
+  # key2: a public key in X25519 format
   def dh(key1, key2)
     RbNaCl::GroupElement.new(key2).mult(key1)
   end
@@ -52,11 +52,12 @@ module DoubleRatchet
     [new_ck, mk]
   end
 
-  # 鍵の誤用に対する耐性の問題から、SIVモードまたはCBCモードとHMACの組み合わせによるAEAD暗号方式が推奨されている。
-  # どちらであっても独自実装が必要になるため、今回はライブラリで実装済みの暗号方式を採用した。
+  # An AEAD encryption scheme based on either SIV or a composition of CBC with HMAC is recommended,
+  # as it provides some misuse resistance if a key is accidentally used multiple times.
+  # A cipher primitive already implemented by the library was used in this case.
   def encrypt(mk, plaintext, ad)
     cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(mk)
-    # メッセージキーは一度しか使用されないため、nonceは固定の値でもかまわない。
+    # Since the message key is only used once, the nonce can be a fixed value.
     nonce = RbNaCl::Random.random_bytes(cipher.nonce_bytes)
     nonce + cipher.encrypt(nonce, plaintext, ad)
   end
@@ -88,12 +89,12 @@ module DoubleRatchet
     return plaintext if plaintext
 
     if header.dh != state[:dhr]
-      # 以前の受信チェーンのスキップ済みメッセージキーを保存しておく
+      # Store message keys that were skipped in the previous receiving chain.
       skip_message_keys(state, header.pn)
       dh_ratchet(state, header)
     end
 
-    # 新しい受信チェーンのスキップ済みメッセージキーを保存しておく
+    # Store message keys that were skipped in the new receiving chain.
     skip_message_keys(state, header.n)
     state[:ckr], mk = kdf_ck(state[:ckr])
     state[:nr] += 1
@@ -147,7 +148,7 @@ module DoubleRatchetWithHeaderEncryption
     [out[0..31], out[32..63], out[64..95]]
   end
 
-  # 同じhkが繰り返し利用されるため、nonceに重複した値を使用してはいけない
+  # Because the same hk will be used repeatedly, the nonce must not be a fixed value.
   def hencrypt(hk, plaintext)
     cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(hk)
     nonce = RbNaCl::Random.random_bytes(cipher.nonce_bytes)
@@ -329,7 +330,7 @@ class Person
 end
 
 if __FILE__ == $0
-  # X3DHで鍵交換をしていれば値を既に持っている
+  # If you used X3DH for key exchange, these values are already stored.
   AD = ['00' * 64].pack('H*')
   SK = ['00' * 32].pack('H*')
   SIGNED_PREKEY = RbNaCl::PrivateKey.generate

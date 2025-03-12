@@ -57,13 +57,14 @@ module DoubleRatchet
   def encrypt(mk, plaintext, ad)
     cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(mk)
     # メッセージキーは一度しか使用されないため、nonceは固定の値でもかまわない。
-    nonce = ['00' * cipher.nonce_bytes].pack('H*')
-    cipher.encrypt(nonce, plaintext, ad)
+    nonce = RbNaCl::Random.random_bytes(cipher.nonce_bytes)
+    nonce + cipher.encrypt(nonce, plaintext, ad)
   end
 
   def decrypt(mk, ciphertext, ad)
     cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(mk)
-    nonce = ['00' * cipher.nonce_bytes].pack('H*')
+    nonce = ciphertext[0..cipher.nonce_bytes - 1]
+    ciphertext = ciphertext[cipher.nonce_bytes..-1]
     cipher.decrypt(nonce, ciphertext, ad)
   end
 
@@ -112,7 +113,7 @@ module DoubleRatchet
   MAX_SKIP = 100
 
   def skip_message_keys(state, num)
-    raise 'Too many skipped message keys' if state[:nr] + MAX_SKIP < num
+    raise 'Too many skipped messages' if state[:nr] + MAX_SKIP < num
 
     if state[:ckr]
       while state[:nr] < num
@@ -149,15 +150,16 @@ module DoubleRatchetWithHeaderEncryption
   # 同じhkが繰り返し利用されるため、nonceに重複した値を使用してはいけない
   def hencrypt(hk, plaintext)
     cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(hk)
-    nonce = ['00' * cipher.nonce_bytes].pack('H*') # TODO
-    cipher.encrypt(nonce, plaintext, '') # TODO
+    nonce = RbNaCl::Random.random_bytes(cipher.nonce_bytes)
+    nonce + cipher.encrypt(nonce, plaintext, '')
   end
 
   def hdecrypt(hk, ciphertext)
     return nil unless hk
     cipher = RbNaCl::AEAD::XChaCha20Poly1305IETF.new(hk)
-    nonce = ['00' * cipher.nonce_bytes].pack('H*') # TODO
-    cipher.decrypt(nonce, ciphertext, '') # TODO
+    nonce = ciphertext[0..cipher.nonce_bytes - 1]
+    ciphertext = ciphertext[cipher.nonce_bytes..-1]
+    cipher.decrypt(nonce, ciphertext, '')
   rescue RbNaCl::CryptoError => e
     if e.message == 'Decryption failed. Ciphertext failed verification.'
       nil
@@ -217,7 +219,7 @@ module DoubleRatchetWithHeaderEncryption
   MAX_SKIP_HE = 100
 
   def skip_message_keys_he(state, num)
-    raise 'Too many skipped message keys' if state[:nr] + MAX_SKIP_HE < num
+    raise 'Too many skipped messages' if state[:nr] + MAX_SKIP_HE < num
 
     if state[:ckr]
       while state[:nr] < num
